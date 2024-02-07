@@ -1,0 +1,276 @@
+---
+title: "Practical 9 - Risk Models II"
+date: "29/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#disable scientific notation 
+options(scipen=999)
+
+#automatically open/install packages
+packages <- c("knitr")
+
+package.check <- lapply(packages, FUN = function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE)
+    library(x, character.only = TRUE)
+  }
+})
+```
+
+---
+
+#  Question 1
+
+---
+
+Consider the collective risk model. An insurer has taken out proportional risk insurance with a retained proportion of 75%. Claims have a compound Poisson distribution with parameter 2000 and the claim amounts follow an exponential distribution with parameter $\theta = 0.00015$.
+
+Simulate 25 000 values for both the insurer and the reinsurer. Calculate the mean amount paid by both parties as well as the following quantity:
+
+$$\frac{E[S_R]}{E[S_R] + E[S_I]}$$
+Use a seed value of 9.
+
+---
+
+## Answer:
+
+```{r Question1, echo = FALSE}
+set.seed(9)
+alpha <- 0.75
+n <- 25000
+lambda <- 2000
+
+N <- rpois(n,lambda)
+SR <- numeric(n)
+SI <- numeric(n)
+
+for (i in 1:n) {
+  x <- rexp(N[i],rate = 0.00015)
+  
+  y <- alpha*x
+  SI[i] <- sum(y)
+  
+  z <- (1-alpha)*x
+  SR[i] <- sum(z)
+  
+}
+ES_I <- mean(SI)
+ES_R <- mean(SR)
+prop <- ES_R/(ES_R+ES_I)
+
+Res <- cbind(ES_I,ES_R,prop)
+colnames(Res) <- c("Insurer(average)","Reinsurer(average)","Requested quantity")
+kable(Res)
+```
+
+---
+
+# Question 2
+
+---
+
+Consider the individual risk model. An insurer has a portfolio consisting of 1000 policies. The probability of a claim on a policy is a $U(0,1)$ random variable. Furthermore, the claim amounts follow a $Gamma$ distribution with $\alpha$ and $\beta$ equal to values within the sets $\{30000,25000\}$ and $\{7,10\}$ respectively, all with equal probability. Simulate 10 000 observations for the aggregate claim amount. 
+
+Use a seed value of 9.
+
+---
+
+## Question 2.1
+
+Calculate the mean and variance of the aggregate claim amount.
+
+---
+
+## Answer:
+
+```{r Question21, echo=FALSE}
+
+set.seed(9)
+sims <- 10000
+policies <- 1000
+S <- numeric(sims)
+
+for (i in 1:sims) {
+  u <- runif(policies)
+  deaths <- rbinom(policies, 1, u)
+  alpha <- sample(x = c(30000,25000), replace = TRUE, size = policies, prob = c(0.5,0.5))
+  
+  beta <- sample(x = c(7,10),replace = TRUE,size = policies, prob = c(0.5,0.5))
+  
+  x <- rgamma(policies,alpha,beta)
+  
+  S[i] <- sum(deaths*x)
+}
+
+Res <- cbind(mean(S),var(S))
+colnames(Res) <- c("Mean","Variance")
+kable(Res)
+
+
+```
+
+---
+
+## Question 2.2 
+
+The insurer takes out aggregate excess of loss reinsurance with a retention limit of R 1,600,000. Calculate the average claim amount paid by both the insurer and the reinsurer.
+
+---
+
+## Answer:
+
+```{r Question22, echo=FALSE}
+
+M <- 1600000
+
+SR <- pmax(0, S-M)
+SI <- pmin(S,M)
+
+Res <- cbind(mean(SI),mean(SR))
+colnames(Res) <- c("Insurer","Reinsurer")
+rownames(Res) <- "Average"
+kable(Res)
+```
+
+---
+
+# Question 3
+
+---
+
+## Question 3.1
+
+The Poisson parameter for all 100 policies in a portfolio is not known but is equally likely to be 0.2 or 0.4 and claims amounts follow a $Gamma$ distribution with parameters $\alpha = 1300$ and $\beta = 0.35$. The insurer has also taken out individual excess of loss reinsurance with a retention level of R 4,000.
+
+Simulate 10,000 aggregate claims from the whole portfolio and hence estimate the mean and standard deviation of the aggregate claims from the whole portfolio for both parties (the insurer and reinsurer).
+
+Use a seed value of 9.
+
+---
+
+## Answer:
+
+```{r Question31, echo=FALSE}
+set.seed(9)
+
+sims <- 10000
+policies <- 100
+M <- 4000
+
+S_I <- numeric(policies)
+S_R <- numeric(policies)
+
+Results_SI <- matrix(nrow = sims, ncol = policies)
+Results_SR <- matrix(nrow = sims, ncol = policies)
+
+for (i in 1:sims){
+  lambda <- sample(x = c(0.2,0.4),replace = TRUE,size = 1,prob = c(0.5,0.5))
+  N <- rpois(policies,lambda)
+  
+  for (j in 1:policies){
+    x <- rgamma(N[j],1300,0.35)
+    
+    S_I[j] <- sum(pmin(M,x))
+    S_R[j] <- sum(pmax(0, x- M))
+    
+  }
+  
+  Results_SI[i,] <- S_I
+  Results_SR[i,] <- S_R
+}
+
+Total_I <- rowSums(Results_SI)
+Total_R <- rowSums(Results_SR)
+
+Res <- as.data.frame(cbind(mean(Total_I),mean(Total_R)))
+colnames(Res) <- c("Insurer","Reinsurer")
+rownames(Res) <- c("Average")
+kable(Res)
+```
+
+---
+
+## Question 3.2
+
+On average, how often does the reinsurer have to step in and pay off part of a claim?
+
+---
+
+## Answer:
+
+```{r Question32, echo=FALSE}
+prob_re_pay <- length(Total_R[Total_R >0])/length(Total_R)
+
+print(paste("On average, it is only required for the reinsurer to step in ",100*prob_re_pay, "% of the time. ", sep = ""))
+```
+
+---
+
+# Question 4
+
+---
+
+## Question 4.1
+
+The number of claims from the $i$th policy in a portfolio follows a $Poisson(\lambda_i)$ distribution. The value of $\lambda_i$ is distributed $Gamma(0.5,1)$. Individual claim amounts follow a normal distribution with mean and variance 1,500 and 1,000 respectively.
+
+Perform a simulation of size 10,000 in order to determine the mean and variance of a randomly chosen policy from this portfolio.
+
+Use a seed value of 9.
+
+---
+
+## Answer:
+
+```{r Question41, echo=FALSE}
+
+sims <- 10000
+S <- numeric(sims)
+
+set.seed(9)
+lambda <- rgamma(sims, 0.5, 1)
+N <- rpois(sims, lambda)
+
+for (i in 1:sims){
+  S[i] <- sum(rnorm(N[i], 1500, sqrt(1000)))
+}
+
+Res1 <- as.data.frame(cbind(mean(S),var(S)))
+colnames(Res1) <- c("Mean", "standard deviation")
+
+knitr::kable(Res1,caption = "Expected value and standard deviation of a randomly selected policy ")
+
+
+### For Aggregate claims
+
+sims <- 10000
+policies <- 100
+S <- numeric(policies)
+Res2 <- matrix(nrow = sims,ncol = policies)
+
+set.seed(9)
+for (i in 1:sims) {
+  lambda <- rgamma(sims, 0.5, 1)
+  N <- rpois(policies, lambda)
+  
+  for (j in 1:policies){
+    S[j] <- sum(rnorm(N[j], 1500, sqrt(1000)))
+  }
+  Res2[i,] <- S
+  
+}
+
+Total <- rowSums(Res2)
+
+
+Res2 <- as.data.frame(cbind(mean(Total),sd(Total)))
+colnames(Res2) <- c("Mean", "standard deviation")
+
+knitr::kable(Res2,caption = "Expected value and standard deviation of the aggregate claims ")
+
+```
+
